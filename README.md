@@ -2,7 +2,7 @@
 
 The codes for our proposed **S**elf-**A**daptive **S**uccess **R**ate based reward shaping algorithm (SASR) for reinforcement learning to tackle the sparse-reward challenge.
 
-[[Paper Link](https://arxiv.org/abs/2408.03029)]
+[[Paper Link](https://iclr.cc/virtual/2025/poster/29692)] [[PDF Link](https://openreview.net/pdf?id=QOfWubPhdS)]
 
 The principles of the SASR mechanism is shown as follows, inspired by the Thompson sampling, we use an evolving Beta distribution to sample estimated success rate for each state as the shaped reward.
 
@@ -127,10 +127,10 @@ We compared SASR with several baselines, including [ReLara](https://proceedings.
 
 ## Citation
 
-If you find this code useful for your research, please consider citing our paper:
+If you find our paper and codes useful, please consider citing our paper:
 
 ```bibtex
-@inproceedings{ma2025,
+@inproceedings{ma2025highly,
   title={Highly efficient self-adaptive reward shaping for reinforcement learning},
   author={Ma, Haozhe and Luo, Zhengding and Vo, Thanh Vinh and Sima, Kuankuan and Leong, Tze-Yun},
   booktitle={International Conference on Learning Representations},

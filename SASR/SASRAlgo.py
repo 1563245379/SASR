@@ -186,7 +186,7 @@ class SASR:
         z_buffer = math.sqrt(2 / self.rff_dim) * torch.cos(torch.matmul(buffer, self.rff_W.T) + self.rff_b)
         z_batch = math.sqrt(2 / self.rff_dim) * torch.cos(torch.matmul(batch, self.rff_W.T) + self.rff_b)
 
-        kde_estimates = torch.sum(torch.matmul(z_buffer, z_batch.T) ** 2, dim=0)
+        kde_estimates = torch.sum(torch.matmul(z_buffer, z_batch.T), dim=0)
 
         return kde_estimates
 
@@ -271,7 +271,9 @@ class SASR:
             density_values_F = self.KDE_RFF_sample(self.F_buffer_tensor,
                                                    data.observations) if self.rff else self.KDE_sample(
                 self.F_buffer_tensor, data.observations)
-            shaped_rewards = Beta(density_values_S + 1, density_values_F + 1).sample()
+            pseudo_counts_S = density_values_S * global_step * self.retention_rate
+            pseudo_counts_F = density_values_F * global_step * self.retention_rate
+            shaped_rewards = Beta(pseudo_counts_S + 1, pseudo_counts_F + 1).sample()
 
             sasr_rewards = data.rewards.flatten() + self.reward_weight * shaped_rewards
             next_q_value = sasr_rewards + (1 - data.dones.flatten()) * self.gamma * min_qf_next_target.view(-1)
