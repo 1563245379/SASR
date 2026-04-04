@@ -23,6 +23,8 @@ import datetime
 import time
 import math
 
+from tqdm import tqdm, trange
+
 
 class SASR:
     """
@@ -211,7 +213,7 @@ class SASR:
         trajectory = []
         reward_positive = False
 
-        for global_step in range(total_timesteps):
+        for global_step in tqdm(range(total_timesteps), desc="SASR Learning"):
             if global_step < learning_starts:
                 action = self.env.action_space.sample()
             else:

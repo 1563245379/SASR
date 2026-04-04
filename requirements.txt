@@ -5,3 +5,4 @@ gymnasium
 gymnasium-robotics
 transformations
 minigrid
+tensorboard
