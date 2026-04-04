@@ -14,7 +14,7 @@ def parse_args():
 
     parser.add_argument("--exp-name", type=str, default="sasr")
 
-    parser.add_argument("--env-id", type=str, default="MyMujoco/Ant-Height-Sparse")
+    parser.add_argument("--env-id", type=str, default="MountainCarContinuous-v0")
     parser.add_argument("--render", type=bool, default=False)
 
     parser.add_argument("--seed", type=int, default=1)
