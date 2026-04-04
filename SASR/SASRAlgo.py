@@ -275,7 +275,9 @@ class SASR:
                 self.F_buffer_tensor, data.observations)
             pseudo_counts_S = density_values_S * global_step * self.retention_rate
             pseudo_counts_F = density_values_F * global_step * self.retention_rate
-            shaped_rewards = Beta(pseudo_counts_S + 1, pseudo_counts_F + 1).sample()
+            alpha_param = torch.clamp(pseudo_counts_S + 1, min=1e-6)
+            beta_param = torch.clamp(pseudo_counts_F + 1, min=1e-6)
+            shaped_rewards = Beta(alpha_param, beta_param).sample()
 
             sasr_rewards = data.rewards.flatten() + self.reward_weight * shaped_rewards
             next_q_value = sasr_rewards + (1 - data.dones.flatten()) * self.gamma * min_qf_next_target.view(-1)
