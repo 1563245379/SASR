@@ -6,3 +6,4 @@ gymnasium-robotics
 transformations
 minigrid
 tensorboard
+tqdm
