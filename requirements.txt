@@ -1,0 +1,7 @@
+numpy
+torch
+stable-baselines3
+gymnasium
+gymnasium-robotics
+transformations
+minigrid
