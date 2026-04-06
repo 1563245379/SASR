@@ -51,8 +51,15 @@ def _patch_smb_env():
     def _x_position(self):
         return int(self.ram[0x6d]) * 0x100 + int(self.ram[0x86])
 
+    @property
+    def _y_position(self):
+        if self._y_viewport < 1:
+            return 255 + (255 - int(self._y_pixel))
+        return 255 - int(self._y_pixel)
+
     cls._level = _level
     cls._x_position = _x_position
+    cls._y_position = _y_position
 
 
 # Apply all patches on import
