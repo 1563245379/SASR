@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument("--cuda", type=int, default=0)
     parser.add_argument("--gamma", type=float, default=0.99)
 
-    parser.add_argument("--model-dir", type=str, default="./SASR/",
+    parser.add_argument("--model-dir", type=str, default="./sasr/",
                         help="Directory containing saved model files.")
     parser.add_argument("--exp-name", type=str, default="sasr")
     parser.add_argument("--indicator", type=str, default="final",
