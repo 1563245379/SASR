@@ -1,3 +1,5 @@
+import gymnasium as gym
+import numpy as np
 from minigrid.wrappers import *
 
 from RLEnvs.MyFetchRobot import reach, push
@@ -11,24 +13,46 @@ import collections
 # Mario Environment Wrappers
 # ============================================================
 
-class GymToGymnasiumWrapper(gym.Wrapper):
-    """Wraps an old-style gym env (4-return step) to gymnasium-style (5-return step)."""
+class GymToGymnasiumWrapper(gym.Env):
+    """Wraps an old-style gym env to a proper gymnasium.Env (5-return step, seed/options support)."""
 
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, old_env):
+        super().__init__()
+        self._old_env = old_env
+        # Copy spaces (convert old gym spaces to gymnasium if needed)
+        obs_sp = old_env.observation_space
+        act_sp = old_env.action_space
+        self.observation_space = gym.spaces.Box(
+            low=obs_sp.low, high=obs_sp.high, shape=obs_sp.shape, dtype=obs_sp.dtype
+        )
+        if hasattr(act_sp, 'n'):
+            self.action_space = gym.spaces.Discrete(act_sp.n)
+        else:
+            self.action_space = gym.spaces.Box(
+                low=act_sp.low, high=act_sp.high, shape=act_sp.shape, dtype=act_sp.dtype
+            )
+        self.metadata = getattr(old_env, 'metadata', {})
+        self.render_mode = getattr(old_env, 'render_mode', None)
 
     def step(self, action):
-        result = self.env.step(action)
+        result = self._old_env.step(action)
         if len(result) == 4:
             obs, reward, done, info = result
-            return obs, reward, done, False, info
+            return obs, float(reward), bool(done), False, info
         return result
 
-    def reset(self, **kwargs):
-        result = self.env.reset(**kwargs)
+    def reset(self, seed=None, options=None):
+        # Old gym envs don't support seed/options in reset
+        result = self._old_env.reset()
         if isinstance(result, tuple) and len(result) == 2:
             return result
         return result, {}
+
+    def render(self):
+        return self._old_env.render()
+
+    def close(self):
+        return self._old_env.close()
 
 
 class MaxAndSkipEnv(gym.Wrapper):
@@ -156,6 +180,7 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
     :param movement: action set - 'simple' (7 actions), 'right_only' (5), or 'complex' (12)
     :return: preprocessed environment with obs_space Box(4,84,84) float32 and Discrete action_space
     """
+    import SASR.compat_patches  # noqa: F401 — apply NumPy 2.0 monkey-patches before importing nes_py/mario
     import gym_super_mario_bros
     from nes_py.wrappers import JoypadSpace
     from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, RIGHT_ONLY, COMPLEX_MOVEMENT
@@ -170,14 +195,15 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
         actions = SIMPLE_MOVEMENT
 
     if render:
-        env = gym_super_mario_bros.make(env_id, render_mode="human", apply_api_compatibility=True)
+        old_env = gym_super_mario_bros.make(env_id, render_mode="human", apply_api_compatibility=True, disable_env_checker=True)
     else:
-        env = gym_super_mario_bros.make(env_id, apply_api_compatibility=True)
+        old_env = gym_super_mario_bros.make(env_id, apply_api_compatibility=True, disable_env_checker=True)
 
-    env = JoypadSpace(env, actions)
+    old_env = JoypadSpace(old_env, actions)
 
-    # Convert old gym API → gymnasium-style 5-return step
-    env = GymToGymnasiumWrapper(env)
+    # Convert old gym env → gymnasium env
+    env = GymToGymnasiumWrapper(old_env)
+
     # Replace reward with sparse reward (score delta + flag_get)
     env = MarioSparseRewardWrapper(env)
     # Frame skipping: repeat action for 4 frames, take max over last 2
