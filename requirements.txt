@@ -7,3 +7,4 @@ transformations
 minigrid
 tensorboard
 tqdm
+tbparse
