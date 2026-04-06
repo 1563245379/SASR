@@ -8,3 +8,6 @@ minigrid
 tensorboard
 tqdm
 tbparse
+gym-super-mario-bros
+nes-py
+opencv-python
