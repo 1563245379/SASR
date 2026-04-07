@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from SASR.Networks import SACActorDiscrete, QNetworkDiscrete
 from SASR.utils import mario_env_maker
 
+from tqdm import tqdm
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained SASR-Mario agent.")
@@ -91,7 +93,7 @@ def evaluate_policy(env, actor, qf_1, qf_2, device, num_episodes, gamma):
     episode_successes = []
     q_predictions = []
 
-    for ep in range(num_episodes):
+    for ep in tqdm(range(num_episodes), desc="Evaluating episodes"):
         obs, _ = env.reset()
         done = False
         total_reward = 0.0
@@ -125,6 +127,8 @@ def evaluate_policy(env, actor, qf_1, qf_2, device, num_episodes, gamma):
             discounted_return += discount * reward
             discount *= gamma
             step += 1
+
+            print(f"  Step {step}: action={action_int}, reward={reward:.4f}, done={done}")
 
             # Success = reached the flag
             if info.get("flag_get", False):
