@@ -220,18 +220,25 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
     return env
 
 
-def classic_control_env_maker(env_id, seed=1, render=False):
+def classic_control_env_maker(env_id, seed=1, render=False, reward_scale=1.0, reward_offset=0.0):
     """
     Make the environment.
     :param env_id: the name of the environment
     :param seed: the random seed
     :param render: whether to render the environment
+    :param reward_scale: multiply env reward by this (default 1.0; applied before RecordEpisodeStatistics)
+    :param reward_offset: add this to reward after scaling (default 0.0)
     :return: the environment
     """
     env = gym.make(env_id) if not render else gym.make(env_id, render_mode="human")
 
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
+
+    if reward_scale != 1.0 or reward_offset != 0.0:
+        rs = float(reward_scale)
+        ro = float(reward_offset)
+        env = gym.wrappers.TransformReward(env, lambda r, _rs=rs, _ro=ro: r * _rs + _ro)
 
     env = gym.wrappers.RecordEpisodeStatistics(env)
 

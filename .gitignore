@@ -1,2 +1,13 @@
 .idea/
 __pycache__/
+**/__pycache__/
+.ipynb_checkpoints/
+
+# COMP579 local artifacts (do not push checkpoints / TB to GitHub)
+ppo/
+ppo-mario/
+runs/
+*.pth
+marioresult/
+Output.txt
+eval_results/
