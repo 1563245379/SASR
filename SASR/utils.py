@@ -145,7 +145,7 @@ class NormalizeObservationWrapper(gym.ObservationWrapper):
 
 class MarioSparseRewardWrapper(gym.Wrapper):
     """Replace Mario's original reward with sparse reward:
-       reward = delta_score / 1000 + flag_get_bonus (+1)
+       reward = delta_score / 1000 + flag_get_bonus (+10)
     """
 
     def __init__(self, env):
@@ -166,7 +166,7 @@ class MarioSparseRewardWrapper(gym.Wrapper):
 
         sparse_reward = delta_score / 1000.0
         if info.get("flag_get", False):
-            sparse_reward += 1.0
+            sparse_reward += 10.0
 
         return obs, sparse_reward, done, truncated, info
 

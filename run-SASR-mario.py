@@ -14,7 +14,7 @@ def parse_args():
 
     parser.add_argument("--exp-name", type=str, default="sasr-mario")
 
-    parser.add_argument("--env-id", type=str, default="SuperMarioBros-v0")
+    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v3")
     parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"],
                         help="Action set: simple (7), right_only (5), complex (12)")
@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument("--retention-rate", type=float, default=0.1)
 
     parser.add_argument("--write-frequency", type=int, default=100)
-    parser.add_argument("--print-frequency", type=int, default=1000,
+    parser.add_argument("--print-frequency", type=int, default=1,
                         help="Print average return every N episodes (0 to disable)")
     parser.add_argument("--save-folder", type=str, default="./sasr-mario/")
 
