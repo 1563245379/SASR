@@ -167,12 +167,14 @@ class MarioSparseRewardWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
 
-        if info.get("flag_get", False):
-            sparse_reward = 1.0
-        else:
-            sparse_reward = 0.0
+        reward = float(reward) / 15.0
 
-        return obs, sparse_reward, done, truncated, info
+        # if info.get("flag_get", False):
+        #     reward = 1.0
+        # else:
+        #     reward = 0.0
+
+        return obs, reward, done, truncated, info
 
 
 def get_unwrapped_smb_env(env):
