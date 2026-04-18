@@ -210,13 +210,15 @@ class SASRDiscrete:
 
         return kde_estimates
 
-    def learn(self, total_timesteps=1000000, learning_starts=10000):
+    def learn(self, total_timesteps=1000000, learning_starts=10000, print_frequency=0):
 
         obs, _ = self.env.reset()
 
         # trajectory tracking (stores raw observations for CNN feature extraction later)
         trajectory = []
         flag_get = False
+        episode_count = 0
+        episode_returns = []
 
         for global_step in tqdm(range(total_timesteps), desc="SASR-Discrete Learning"):
             if global_step < learning_starts:
@@ -232,6 +234,13 @@ class SASRDiscrete:
             if "episode" in info:
                 self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                episode_count += 1
+                episode_returns.append(info["episode"]["r"])
+                if print_frequency > 0 and episode_count % print_frequency == 0:
+                    avg_return = np.mean(episode_returns[-print_frequency:])
+                    print(f"Episode {episode_count} | Step {global_step} | "
+                          f"Avg Return (last {print_frequency}): {avg_return:.2f} | "
+                          f"Last Return: {info['episode']['r']:.2f}")
 
             self.replay_buffer.add(obs, next_obs, np.array([action]), reward, done, info)
             trajectory.append(obs)

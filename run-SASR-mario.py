@@ -49,6 +49,8 @@ def parse_args():
     parser.add_argument("--retention-rate", type=float, default=0.1)
 
     parser.add_argument("--write-frequency", type=int, default=100)
+    parser.add_argument("--print-frequency", type=int, default=1000,
+                        help="Print average return every N episodes (0 to disable)")
     parser.add_argument("--save-folder", type=str, default="./sasr-mario/")
 
     args = parser.parse_args()
@@ -92,7 +94,7 @@ def run():
         save_folder=args.save_folder,
     )
 
-    agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts)
+    agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
 
     agent.save(indicator="final")
 
