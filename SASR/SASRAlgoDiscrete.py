@@ -39,7 +39,7 @@ class SASRDiscrete:
                  alpha_lr=3e-4, target_network_frequency=1, tau=0.005, policy_frequency=2, alpha=0.2,
                  alpha_autotune=True, reward_weight=0.6, kde_bandwidth=0.2, kde_sample_burn_in=1000, rff_dim=1000,
                  retention_rate=0.1, write_frequency=100, save_folder="./sasr-mario/",
-                 feature_dim=512):
+                 feature_dim=512, feature_refresh_interval=5000):
         """
         Initialize the SASR algorithm for discrete action spaces.
         :param env: the gymnasium-compatible environment with image observations and discrete actions
@@ -122,12 +122,16 @@ class SASRDiscrete:
         self.reward_weight = reward_weight / 2
         self.feature_dim = feature_dim
 
-        # S/F buffers store CNN feature vectors (not raw images)
+        # S/F buffers store raw observations (not pre-extracted features).
+        # Feature tensors are rebuilt every feature_refresh_interval optimize steps
+        # so that buffer features and query features always use the same network weights,
+        # fixing the staleness / feature-space mismatch problem.
         self.S_buffer = []
-        self.S_buffer_tensor = torch.Tensor(self.S_buffer).to(self.device)
+        self.S_buffer_tensor = torch.zeros(0, feature_dim).to(self.device)
         self.F_buffer = []
-        self.F_buffer_tensor = torch.Tensor(self.F_buffer).to(self.device)
+        self.F_buffer_tensor = torch.zeros(0, feature_dim).to(self.device)
         self.retention_rate = retention_rate
+        self.feature_refresh_interval = feature_refresh_interval
 
         self.kde_bandwidth = kde_bandwidth
         self.kde_sample_burn_in = kde_sample_burn_in
@@ -152,18 +156,19 @@ class SASRDiscrete:
             features = self.actor.get_features(obs_tensor)
         return features
 
-    def _extract_features_from_numpy(self, obs_list):
-        """Extract features from a list of numpy observations.
-        Processes in batches to avoid OOM.
+    def _extract_features_in_batches(self, obs_list, batch_size=2048):
+        """Extract CNN features from a list of raw observations using the current network.
+        Processes in mini-batches to avoid OOM.
         :param obs_list: list of numpy arrays, each (C, H, W)
-        :return: list of numpy arrays, each (feature_dim,)
+        :param batch_size: processing batch size
+        :return: (N, feature_dim) tensor
         """
-        if len(obs_list) == 0:
-            return []
-        batch = np.array(obs_list)
-        batch_tensor = torch.FloatTensor(batch).to(self.device)
-        features = self._extract_features(batch_tensor)
-        return features.cpu().numpy().tolist()
+        all_features = []
+        for i in range(0, len(obs_list), batch_size):
+            batch = np.array(obs_list[i:i + batch_size])
+            batch_tensor = torch.FloatTensor(batch).to(self.device)
+            all_features.append(self._extract_features(batch_tensor))
+        return torch.cat(all_features, dim=0)
 
     def update_S(self, trajectory):
         retention_interval = int(1 / self.retention_rate) + 1
@@ -171,10 +176,9 @@ class SASRDiscrete:
             return
         trajectory = trajectory[::retention_interval]
 
-        # Extract CNN features and store them
-        feature_list = self._extract_features_from_numpy(trajectory)
-        self.S_buffer += feature_list
-        self.S_buffer_tensor = torch.Tensor(np.array(self.S_buffer)).to(self.device)
+        # Store raw observations; features are re-extracted with the current network
+        # in _rebuild_buffer_features() to avoid stale feature-space mismatch.
+        self.S_buffer += trajectory
 
     def update_F(self, trajectory):
         retention_interval = int(1 / self.retention_rate) + 1
@@ -182,9 +186,20 @@ class SASRDiscrete:
             return
         trajectory = trajectory[::retention_interval]
 
-        feature_list = self._extract_features_from_numpy(trajectory)
-        self.F_buffer += feature_list
-        self.F_buffer_tensor = torch.Tensor(np.array(self.F_buffer)).to(self.device)
+        # Store raw observations; features are re-extracted with the current network
+        # in _rebuild_buffer_features() to avoid stale feature-space mismatch.
+        self.F_buffer += trajectory
+
+    def _rebuild_buffer_features(self, batch_size=2048):
+        """Re-extract CNN features for all stored raw observations using the current network.
+        Calling this periodically ensures buffer tensors and KDE query features
+        are always in the same (up-to-date) feature space.
+        :param batch_size: processing batch size for feature extraction
+        """
+        if len(self.S_buffer) > 0:
+            self.S_buffer_tensor = self._extract_features_in_batches(self.S_buffer, batch_size)
+        if len(self.F_buffer) > 0:
+            self.F_buffer_tensor = self._extract_features_in_batches(self.F_buffer, batch_size)
 
     def KDE_RFF_sample(self, buffer, batch):
         if buffer.shape[0] <= self.kde_sample_burn_in:
@@ -276,6 +291,12 @@ class SASRDiscrete:
         observations = data.observations
         next_observations = data.next_observations
         actions = data.actions.long()  # (batch, 1)
+
+        # Periodically rebuild S/F buffer feature tensors with the current network
+        # so that buffer features and KDE query features share the same feature space.
+        if global_step % self.feature_refresh_interval == 0:
+            print("Rebuilding S/F buffer features at step {}...".format(global_step))
+            self._rebuild_buffer_features()
 
         with torch.no_grad():
             # --- Next-state value computation (SAC-Discrete) ---
