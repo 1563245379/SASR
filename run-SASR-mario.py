@@ -76,6 +76,7 @@ def run():
 
     # Curriculum positions: (x_pos, y_pos) from near-goal to near-start
     CURRICULUM_POSITIONS = [
+        (2700, 79),
         (1900, 79),
         (1500, 79),
         (1000, 79),

@@ -104,7 +104,7 @@ def get_action():
 parser = argparse.ArgumentParser(description="手动游玩 / 录制 Mario 动作序列")
 parser.add_argument("--record", type=int, default=None,
                     help="录制模式：指定目标 x 坐标，到达后自动保存")
-parser.add_argument("--record-all", action="store_true", default=True,
+parser.add_argument("--record-all", action="store_true", default=False,
                     help="连续录制所有课程位置的动作序列（一次游玩，依次保存）")
 parser.add_argument("--save-dir", type=str, default="./curriculum_actions",
                     help="动作序列保存目录")
