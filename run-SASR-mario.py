@@ -18,14 +18,14 @@ def parse_args():
     parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"],
                         help="Action set: simple (7), right_only (5), complex (12)")
-    parser.add_argument("--render", type=bool, default=False)
+    parser.add_argument("--render", action="store_true", help="Whether to render the environment")
 
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--cuda", type=int, default=0)
     parser.add_argument("--gamma", type=float, default=0.99)
 
     parser.add_argument("--buffer-size", type=int, default=100000)
-    parser.add_argument("--rb-optimize-memory", type=bool, default=False)
+    parser.add_argument("--rb-optimize-memory", action="store_true", help="Whether to optimize replay buffer memory usage")
     parser.add_argument("--batch-size", type=int, default=32)
 
     parser.add_argument("--policy-lr", type=float, default=3e-4)
@@ -53,6 +53,18 @@ def parse_args():
                         help="Print average return every N episodes (0 to disable)")
     parser.add_argument("--save-folder", type=str, default="./sasr-mario/")
 
+    # Curriculum learning
+    parser.add_argument("--curriculum", action="store_true", default=False,
+                        help="Enable curriculum learning (start near goal, progress to start)")
+    parser.add_argument("--min-stage-episodes", type=int, default=100,
+                        help="Minimum episodes per curriculum stage before evaluation starts")
+    parser.add_argument("--eval-interval", type=int, default=20,
+                        help="Evaluate every N episodes after min-stage-episodes reached")
+    parser.add_argument("--eval-episodes", type=int, default=10,
+                        help="Number of evaluation episodes per check")
+    parser.add_argument("--max-stage-episodes", type=int, default=500,
+                        help="Maximum episodes per stage (force advance to next stage)")
+
     args = parser.parse_args()
     return args
 
@@ -60,7 +72,20 @@ def parse_args():
 def run():
     args = parse_args()
 
-    env = mario_env_maker(env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement)
+    # Curriculum positions: (x_pos, y_pos) from near-goal to near-start
+    CURRICULUM_POSITIONS = [
+        (2850, 79),
+        (2354, 79),
+        (2130, 79),
+        (1500, 79),
+        (1000, 79),
+        (550, 79),
+    ]
+
+    env = mario_env_maker(
+        env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement,
+        curriculum_positions=CURRICULUM_POSITIONS if args.curriculum else None,
+    )
 
     print(f"Environment: {args.env_id}")
     print(f"Observation space: {env.observation_space}")
@@ -94,7 +119,17 @@ def run():
         save_folder=args.save_folder,
     )
 
-    agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
+    if args.curriculum:
+        agent.curriculum_learn(
+            learning_starts=args.learning_starts,
+            print_frequency=args.print_frequency,
+            min_stage_episodes=args.min_stage_episodes,
+            eval_interval=args.eval_interval,
+            eval_episodes=args.eval_episodes,
+            max_stage_episodes=args.max_stage_episodes,
+        )
+    else:
+        agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
 
     agent.save(indicator="final")
 

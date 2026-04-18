@@ -65,3 +65,8 @@ def _patch_smb_env():
 # Apply all patches on import
 _patch_nes_py_rom()
 _patch_smb_env()
+
+# Restore np.bool8 removed in NumPy 2.0 (needed by gym's passive_env_checker)
+import numpy as _np
+if not hasattr(_np, 'bool8'):
+    _np.bool8 = _np.bool_

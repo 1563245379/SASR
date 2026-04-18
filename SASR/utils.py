@@ -171,7 +171,47 @@ class MarioSparseRewardWrapper(gym.Wrapper):
         return obs, sparse_reward, done, truncated, info
 
 
-def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="simple"):
+def get_unwrapped_smb_env(env):
+    """Recursively unwrap to find the SuperMarioBrosEnv instance."""
+    current = env
+    while hasattr(current, 'env') or hasattr(current, '_old_env'):
+        if hasattr(current, '_old_env'):
+            current = current._old_env
+        else:
+            current = current.env
+        if type(current).__name__ == 'SuperMarioBrosEnv':
+            return current
+    if type(current).__name__ == 'SuperMarioBrosEnv':
+        return current
+    raise ValueError("Could not find SuperMarioBrosEnv in wrapper chain")
+
+
+class CurriculumMarioWrapper(gym.Wrapper):
+    """Wrapper that supports curriculum learning by changing Mario's start position."""
+
+    def __init__(self, env, curriculum_positions):
+        super().__init__(env)
+        self.curriculum_positions = curriculum_positions  # list of (x, y) tuples
+        self._current_stage = 0
+        self._smb_env = get_unwrapped_smb_env(env)
+
+    def set_stage(self, stage_idx, render=False):
+        """Set the curriculum stage, fast-forwarding Mario to the target position."""
+        self._current_stage = stage_idx
+        target_x = self.curriculum_positions[stage_idx][0]
+        self._smb_env.set_curriculum_position(target_x, render=render)
+
+    @property
+    def current_stage(self):
+        return self._current_stage
+
+    @property
+    def num_stages(self):
+        return len(self.curriculum_positions)
+
+
+def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="simple",
+                    curriculum_positions=None):
     """
     Create a Super Mario Bros environment with standard preprocessing.
     :param env_id: the Mario environment ID
@@ -216,6 +256,9 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
     env = NormalizeObservationWrapper(env)
 
     env = gym.wrappers.RecordEpisodeStatistics(env)
+
+    if curriculum_positions is not None:
+        env = CurriculumMarioWrapper(env, curriculum_positions)
 
     return env
 

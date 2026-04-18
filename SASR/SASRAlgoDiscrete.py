@@ -389,3 +389,129 @@ class SASRDiscrete:
                    os.path.join(self.save_folder, "qf_1-{}-{}-{}.pth".format(self.exp_name, indicator, self.seed)))
         torch.save(self.qf_2.state_dict(),
                    os.path.join(self.save_folder, "qf_2-{}-{}-{}.pth".format(self.exp_name, indicator, self.seed)))
+
+    def evaluate(self, n_episodes=10):
+        """Run deterministic policy evaluation, return flag_get success rate."""
+        successes = 0
+        for _ in range(n_episodes):
+            obs, _ = self.env.reset()
+            done = False
+            while not done:
+                obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+                action = self.actor.get_deterministic_action(obs_tensor)
+                obs, reward, terminated, truncated, info = self.env.step(action.item())
+                done = terminated or truncated
+                if info.get("flag_get", False):
+                    successes += 1
+                    break
+        return successes / n_episodes
+
+    def curriculum_learn(self, learning_starts=10000, print_frequency=0,
+                         min_stage_episodes=100, eval_interval=20,
+                         eval_episodes=10, max_stage_episodes=500):
+        """Curriculum learning: train from near-goal positions to far, stage by stage.
+
+        The environment must be wrapped with CurriculumMarioWrapper.
+        Network parameters, replay buffer, and S/F buffers are preserved across stages.
+
+        Args:
+            learning_starts: random exploration steps before policy is used
+            print_frequency: print average return every N episodes (0 to disable)
+            min_stage_episodes: minimum episodes per stage before evaluation starts
+            eval_interval: evaluate every N episodes (after min_stage_episodes)
+            eval_episodes: number of episodes per evaluation
+            max_stage_episodes: force advance to next stage after this many episodes
+        """
+
+        num_stages = self.env.num_stages
+        global_step = 0
+
+        for stage_idx in range(num_stages):
+            # Set environment to current curriculum stage
+            self.env.set_stage(stage_idx)
+            target_x = self.env.curriculum_positions[stage_idx][0]
+            print("\n" + "=" * 60)
+            print("  CURRICULUM STAGE {}/{}: start_x={}".format(stage_idx, num_stages - 1, target_x))
+            print("=" * 60)
+
+            obs, _ = self.env.reset()
+            trajectory = []
+            flag_get = False
+            stage_episode_count = 0
+            episode_returns = []
+            passed = False
+
+            while stage_episode_count < max_stage_episodes:
+                # Select action
+                if global_step < learning_starts:
+                    action = self.env.action_space.sample()
+                else:
+                    obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+                    action, _, _ = self.actor.get_action(obs_tensor)
+                    action = action.item()
+
+                next_obs, reward, terminated, truncated, info = self.env.step(action)
+                done = terminated or truncated
+
+                if "episode" in info:
+                    self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                    self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    self.writer.add_scalar("curriculum/stage", stage_idx, global_step)
+                    stage_episode_count += 1
+                    episode_returns.append(info["episode"]["r"])
+                    if print_frequency > 0 and stage_episode_count % print_frequency == 0:
+                        avg_return = np.mean(episode_returns[-print_frequency:])
+                        print("Stage {} | Episode {} | Step {} | "
+                              "Avg Return (last {}): {:.2f} | "
+                              "Last Return: {:.2f}".format(
+                                  stage_idx, stage_episode_count, global_step,
+                                  print_frequency, avg_return, info["episode"]["r"]))
+
+                self.replay_buffer.add(obs, next_obs, np.array([action]), reward, done, info)
+                trajectory.append(obs)
+
+                if info.get("flag_get", False):
+                    flag_get = True
+
+                if not done:
+                    obs = next_obs
+                else:
+                    obs, _ = self.env.reset()
+
+                    # Classify trajectory as success or failure
+                    if flag_get:
+                        self.update_S(trajectory)
+                    else:
+                        self.update_F(trajectory)
+
+                    trajectory = []
+                    flag_get = False
+
+                    # Evaluation check: after min episodes, every eval_interval episodes
+                    if (stage_episode_count >= min_stage_episodes and
+                            stage_episode_count % eval_interval == 0):
+                        pass_rate = self.evaluate(eval_episodes)
+                        self.writer.add_scalar("curriculum/pass_rate", pass_rate, global_step)
+                        print("  [Eval] Stage {} | Episode {} | Pass rate: {:.1f}%".format(
+                            stage_idx, stage_episode_count, pass_rate * 100))
+                        if pass_rate >= 0.7:
+                            print("  >>> Stage {} PASSED! (rate={:.1f}%)".format(
+                                stage_idx, pass_rate * 100))
+                            passed = True
+                            break
+
+                if global_step > learning_starts:
+                    self.optimize(global_step)
+
+                global_step += 1
+
+            if not passed:
+                print("  >>> Stage {} reached max episodes ({}), advancing.".format(
+                    stage_idx, max_stage_episodes))
+
+            # Save checkpoint after each stage
+            self.save(indicator="stage{}".format(stage_idx))
+
+        print("\nCurriculum training complete. Total steps: {}".format(global_step))
+        self.env.close()
+        self.writer.close()
