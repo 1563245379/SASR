@@ -34,7 +34,6 @@ CURRICULUM_POSITIONS = [
     (1000, 79),
     (1500, 79),
     (2000, 79),
-    (2600, 79),
 ]
 
 # NES 按钮名称 → 位掩码
@@ -171,8 +170,7 @@ try:
         action = get_action()
 
         # 录制模式下保持无敌状态
-        if recording:
-            nes_env.ram[0x079E] = 255
+        nes_env.ram[0x079E] = 255
 
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
