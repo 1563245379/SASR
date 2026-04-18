@@ -408,7 +408,7 @@ class SASRDiscrete:
 
     def curriculum_learn(self, learning_starts=10000, print_frequency=0,
                          min_stage_episodes=100, eval_interval=20,
-                         eval_episodes=10, max_stage_episodes=500):
+                         eval_episodes=10, max_stage_episodes=500, pass_rate_threshold=0.5):
         """Curriculum learning: train from near-goal positions to far, stage by stage.
 
         The environment must be wrapped with CurriculumMarioWrapper.
@@ -421,6 +421,7 @@ class SASRDiscrete:
             eval_interval: evaluate every N episodes (after min_stage_episodes)
             eval_episodes: number of episodes per evaluation
             max_stage_episodes: force advance to next stage after this many episodes
+            pass_rate_threshold: success rate threshold to advance to next stage
         """
 
         num_stages = self.env.num_stages
@@ -501,7 +502,7 @@ class SASRDiscrete:
                         self.writer.add_scalar("curriculum/pass_rate", pass_rate, global_step)
                         print("  [Eval] Stage {} | Episode {} | Pass rate: {:.1f}%".format(
                             stage_idx, stage_episode_count, pass_rate * 100))
-                        if pass_rate >= 0.7:
+                        if pass_rate >= pass_rate_threshold:
                             print("  >>> Stage {} PASSED! (rate={:.1f}%)".format(
                                 stage_idx, pass_rate * 100))
                             passed = True

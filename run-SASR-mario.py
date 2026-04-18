@@ -64,6 +64,8 @@ def parse_args():
                         help="Number of evaluation episodes per check")
     parser.add_argument("--max-stage-episodes", type=int, default=1000,
                         help="Maximum episodes per stage (force advance to next stage)")
+    parser.add_argument("--pass-rate-threshold", type=float, default=0.5,
+                        help="Success rate threshold to advance to next stage")
 
     args = parser.parse_args()
     return args
@@ -126,6 +128,7 @@ def run():
             eval_interval=args.eval_interval,
             eval_episodes=args.eval_episodes,
             max_stage_episodes=args.max_stage_episodes,
+            pass_rate_threshold=args.pass_rate_threshold,
         )
     else:
         agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
