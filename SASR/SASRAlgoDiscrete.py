@@ -393,16 +393,22 @@ class SASRDiscrete:
     def evaluate(self, n_episodes=10):
         """Run deterministic policy evaluation, return flag_get success rate."""
         successes = 0
-        for _ in range(n_episodes):
+        for ep in range(n_episodes):
             obs, _ = self.env.reset()
             done = False
+            step = 0
+            print(f"  [Eval] Episode {ep + 1}/{n_episodes}")
             while not done:
                 obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
                 action = self.actor.get_deterministic_action(obs_tensor)
                 obs, reward, terminated, truncated, info = self.env.step(action.item())
                 done = terminated or truncated
+                x_pos = info.get("x_pos", "N/A")
+                print(f"    step={step:4d}  action={action.item()}  x_pos={x_pos}")
+                step += 1
                 if info.get("flag_get", False):
                     successes += 1
+                    print(f"    >> Flag get!")
                     break
         return successes / n_episodes
 
