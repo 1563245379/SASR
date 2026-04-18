@@ -56,7 +56,7 @@ def parse_args():
     # Curriculum learning
     parser.add_argument("--curriculum", action="store_true", default=False,
                         help="Enable curriculum learning (start near goal, progress to start)")
-    parser.add_argument("--min-stage-episodes", type=int, default=200,
+    parser.add_argument("--min-stage-episodes", type=int, default=100,
                         help="Minimum episodes per curriculum stage before evaluation starts")
     parser.add_argument("--eval-interval", type=int, default=50,
                         help="Evaluate every N episodes after min-stage-episodes reached")

@@ -167,13 +167,15 @@ class MarioSparseRewardWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
         # Compute sparse reward
-        current_score = info.get("score", 0)
-        delta_score = current_score - self._prev_score
-        self._prev_score = current_score
+        # current_score = info.get("score", 0)
+        # delta_score = current_score - self._prev_score
+        # self._prev_score = current_score
 
-        sparse_reward = delta_score / 1000.0
+        # sparse_reward = delta_score / 1000.0
         if info.get("flag_get", False):
-            sparse_reward += 10.0
+            sparse_reward = 10.0
+        else:
+            sparse_reward = 0.0
 
         return obs, sparse_reward, done, truncated, info
 
