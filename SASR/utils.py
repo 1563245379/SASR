@@ -85,12 +85,13 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 class GrayscaleResizeWrapper(gym.ObservationWrapper):
-    """Convert RGB to grayscale and resize to (84, 84)."""
+    """Convert RGB to grayscale and resize to (84, 84). Top 20 rows are blacked out."""
 
     def __init__(self, env, width=84, height=84):
         super().__init__(env)
         self._width = width
         self._height = height
+        self._saved_sample = False
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(1, self._height, self._width), dtype=np.uint8
         )
@@ -98,6 +99,12 @@ class GrayscaleResizeWrapper(gym.ObservationWrapper):
     def observation(self, obs):
         gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         resized = cv2.resize(gray, (self._width, self._height), interpolation=cv2.INTER_AREA)
+        # Black out the top 15 rows to remove HUD
+        resized[:15, :] = 0
+        if not self._saved_sample:
+            cv2.imwrite("sample_observation.png", resized)
+            print(f"[GrayscaleResizeWrapper] Saved sample observation to sample_observation.png")
+            self._saved_sample = True
         return resized[np.newaxis, :, :]  # (1, 84, 84)
 
 

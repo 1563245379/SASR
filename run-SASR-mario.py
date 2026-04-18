@@ -14,7 +14,7 @@ def parse_args():
 
     parser.add_argument("--exp-name", type=str, default="sasr-mario")
 
-    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v3")
+    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
     parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"],
                         help="Action set: simple (7), right_only (5), complex (12)")
@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument("--policy-frequency", type=int, default=2)
 
     parser.add_argument("--total-timesteps", type=int, default=1000000)
-    parser.add_argument("--learning-starts", type=int, default=10000)
+    parser.add_argument("--learning-starts", type=int, default=5000)
 
     parser.add_argument("--reward-weight", type=float, default=0.6)
     parser.add_argument("--kde-bandwidth", type=float, default=0.2)
@@ -49,20 +49,20 @@ def parse_args():
     parser.add_argument("--retention-rate", type=float, default=0.1)
 
     parser.add_argument("--write-frequency", type=int, default=100)
-    parser.add_argument("--print-frequency", type=int, default=1,
+    parser.add_argument("--print-frequency", type=int, default=10,
                         help="Print average return every N episodes (0 to disable)")
     parser.add_argument("--save-folder", type=str, default="./sasr-mario/")
 
     # Curriculum learning
     parser.add_argument("--curriculum", action="store_true", default=False,
                         help="Enable curriculum learning (start near goal, progress to start)")
-    parser.add_argument("--min-stage-episodes", type=int, default=100,
+    parser.add_argument("--min-stage-episodes", type=int, default=200,
                         help="Minimum episodes per curriculum stage before evaluation starts")
-    parser.add_argument("--eval-interval", type=int, default=20,
+    parser.add_argument("--eval-interval", type=int, default=50,
                         help="Evaluate every N episodes after min-stage-episodes reached")
     parser.add_argument("--eval-episodes", type=int, default=10,
                         help="Number of evaluation episodes per check")
-    parser.add_argument("--max-stage-episodes", type=int, default=500,
+    parser.add_argument("--max-stage-episodes", type=int, default=1000,
                         help="Maximum episodes per stage (force advance to next stage)")
 
     args = parser.parse_args()
@@ -74,12 +74,11 @@ def run():
 
     # Curriculum positions: (x_pos, y_pos) from near-goal to near-start
     CURRICULUM_POSITIONS = [
-        (2850, 79),
-        (2354, 79),
-        (2130, 79),
+        (2600, 79),
+        (2000, 79),
         (1500, 79),
         (1000, 79),
-        (550, 79),
+        (500, 79),
     ]
 
     env = mario_env_maker(

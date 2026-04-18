@@ -488,9 +488,16 @@ class SASRDiscrete:
                     flag_get = False
 
                     # Evaluation check: after min episodes, every eval_interval episodes
-                    if (stage_episode_count >= min_stage_episodes and
+                    # Skip evaluation if training hasn't started yet
+                    if (global_step >= learning_starts and
+                            stage_episode_count >= min_stage_episodes and
                             stage_episode_count % eval_interval == 0):
+                        print("Start Eval")
                         pass_rate = self.evaluate(eval_episodes)
+                        # Reset env after evaluation (evaluate leaves it in a done state)
+                        obs, _ = self.env.reset()
+                        trajectory = []
+                        flag_get = False
                         self.writer.add_scalar("curriculum/pass_rate", pass_rate, global_step)
                         print("  [Eval] Stage {} | Episode {} | Pass rate: {:.1f}%".format(
                             stage_idx, stage_episode_count, pass_rate * 100))

@@ -29,12 +29,11 @@ from pyglet.window import key as pyglet_key
 
 # 课程学习目标位置（按 x 从小到大排列，即游玩时依次经过的顺序）
 CURRICULUM_POSITIONS = [
-    (550, 79),
+    (500, 79),
     (1000, 79),
     (1500, 79),
-    (2130, 79),
-    (2354, 79),
-    (2850, 79),
+    (2000, 79),
+    (2600, 79),
 ]
 
 # NES 按钮名称 → 位掩码
@@ -127,7 +126,7 @@ next_target_idx = 0  # 下一个要保存的目标索引
 
 # --------------- 创建环境 ---------------
 import gym_super_mario_bros
-env = gym_super_mario_bros.make('SuperMarioBros-1-1-v3', render_mode='human', apply_api_compatibility=True)
+env = gym_super_mario_bros.make('SuperMarioBros-1-1-v1', render_mode='human', apply_api_compatibility=True)
 env = JoypadSpace(env, COMPLEX_MOVEMENT)
 
 obs = env.reset()
