@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument("--exp-name", type=str, default="sasr-mario")
 
     parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
-    parser.add_argument("--movement", type=str, default="simple",
+    parser.add_argument("--movement", type=str, default="right_only",
                         choices=["simple", "right_only", "complex"],
                         help="Action set: simple (7), right_only (5), complex (12)")
     parser.add_argument("--render", action="store_true", help="Whether to render the environment")
@@ -81,6 +81,7 @@ def run():
         (1500, 79),
         (1000, 79),
         (500, 79),
+        (40, 79),
     ]
 
     env = mario_env_maker(

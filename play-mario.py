@@ -29,6 +29,7 @@ from pyglet.window import key as pyglet_key
 
 # 课程学习目标位置（按 x 从小到大排列，即游玩时依次经过的顺序）
 CURRICULUM_POSITIONS = [
+    (40, 79), 
     (500, 79),
     (1000, 79),
     (1500, 79),
