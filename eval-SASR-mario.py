@@ -21,7 +21,7 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained SASR-Mario agent.")
 
-    parser.add_argument("--env-id", type=str, default="SuperMarioBros-v0")
+    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
     parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"])
     parser.add_argument("--wrapper-type", type=str, default="sasr",

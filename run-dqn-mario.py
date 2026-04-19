@@ -168,7 +168,7 @@ def parse_args():
 
     parser.add_argument("--exp-name", type=str, default="duel-dqn-mario")
     parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
-    parser.add_argument("--movement", type=str, default="right_only",
+    parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"])
     parser.add_argument("--render", action="store_true")
 
