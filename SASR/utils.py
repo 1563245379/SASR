@@ -85,12 +85,13 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 class GrayscaleResizeWrapper(gym.ObservationWrapper):
-    """Convert RGB to grayscale and resize to (84, 84). Top 20 rows are blacked out."""
+    """Convert RGB to grayscale and resize to (84, 84). Optionally black out top rows."""
 
-    def __init__(self, env, width=84, height=84):
+    def __init__(self, env, width=84, height=84, blackout_top=True):
         super().__init__(env)
         self._width = width
         self._height = height
+        self._blackout_top = blackout_top
         self._saved_sample = False
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(1, self._height, self._width), dtype=np.uint8
@@ -100,7 +101,8 @@ class GrayscaleResizeWrapper(gym.ObservationWrapper):
         gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         resized = cv2.resize(gray, (self._width, self._height), interpolation=cv2.INTER_AREA)
         # Black out the top 15 rows to remove HUD
-        resized[:15, :] = 0
+        if self._blackout_top:
+            resized[:15, :] = 0
         if not self._saved_sample:
             cv2.imwrite("sample_observation.png", resized)
             print(f"[GrayscaleResizeWrapper] Saved sample observation to sample_observation.png")
@@ -175,6 +177,53 @@ class MarioSparseRewardWrapper(gym.Wrapper):
         #     reward = 0.0
 
         return obs, reward, done, truncated, info
+
+
+class NoopResetWrapper(gym.Wrapper):
+    """Execute random number of no-ops on reset (gymnasium-compatible)."""
+
+    def __init__(self, env, noop_max=30):
+        super().__init__(env)
+        self.noop_max = noop_max
+        self.noop_action = 0
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        noops = np.random.randint(1, self.noop_max + 1)
+        for _ in range(noops):
+            obs, _, terminated, truncated, info = self.env.step(self.noop_action)
+            if terminated or truncated:
+                obs, info = self.env.reset(**kwargs)
+        return obs, info
+
+
+class EpisodicLifeMarioWrapper(gym.Wrapper):
+    """Make loss-of-life == end-of-episode for Mario (gymnasium-compatible)."""
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.lives = 0
+        self.was_real_done = True
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.was_real_done = terminated or truncated
+        # Detect life loss via the unwrapped Mario env
+        smb = get_unwrapped_smb_env(self)
+        lives = smb._life
+        if lives < self.lives and lives > 0:
+            terminated = True
+        self.lives = lives
+        return obs, reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        if self.was_real_done:
+            obs, info = self.env.reset(**kwargs)
+        else:
+            obs, _, _, _, info = self.env.step(0)
+        smb = get_unwrapped_smb_env(self)
+        self.lives = smb._life
+        return obs, info
 
 
 def get_unwrapped_smb_env(env):
@@ -265,6 +314,44 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
 
     if curriculum_positions is not None:
         env = CurriculumMarioWrapper(env, curriculum_positions)
+
+    return env
+
+
+def dqn_mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="complex"):
+    """
+    Create a Mario environment with DQN-style preprocessing (OpenAI baseline wrappers).
+    Differences from SASR wrapper: NoopReset, EpisodicLife, no HUD blackout, no sparse reward.
+    """
+    import SASR.compat_patches  # noqa: F401
+    import gym_super_mario_bros
+    from nes_py.wrappers import JoypadSpace
+    from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, RIGHT_ONLY, COMPLEX_MOVEMENT
+
+    if movement == "simple":
+        actions = SIMPLE_MOVEMENT
+    elif movement == "right_only":
+        actions = RIGHT_ONLY
+    elif movement == "complex":
+        actions = COMPLEX_MOVEMENT
+    else:
+        actions = COMPLEX_MOVEMENT
+
+    if render:
+        old_env = gym_super_mario_bros.make(env_id, render_mode="human", apply_api_compatibility=True, disable_env_checker=True)
+    else:
+        old_env = gym_super_mario_bros.make(env_id, apply_api_compatibility=True, disable_env_checker=True)
+
+    old_env = JoypadSpace(old_env, actions)
+
+    env = GymToGymnasiumWrapper(old_env)
+    env = NoopResetWrapper(env, noop_max=30)
+    env = MaxAndSkipEnv(env, skip=4)
+    env = EpisodicLifeMarioWrapper(env)
+    env = GrayscaleResizeWrapper(env, blackout_top=False)
+    env = FrameStackWrapper(env, n_frames=4)
+    env = NormalizeObservationWrapper(env)
+    env = gym.wrappers.RecordEpisodeStatistics(env)
 
     return env
 

@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 from SASR.Networks import SACActorDiscrete, QNetworkDiscrete
-from SASR.utils import mario_env_maker
+from SASR.utils import mario_env_maker, dqn_mario_env_maker
 
 from tqdm import tqdm
 
@@ -24,6 +24,9 @@ def parse_args():
     parser.add_argument("--env-id", type=str, default="SuperMarioBros-v0")
     parser.add_argument("--movement", type=str, default="simple",
                         choices=["simple", "right_only", "complex"])
+    parser.add_argument("--wrapper-type", type=str, default="sasr",
+                        choices=["sasr", "dqn"],
+                        help="Wrapper set: 'sasr' (SASR wrappers) or 'dqn' (DQN-style OpenAI baseline wrappers).")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--cuda", type=int, default=0)
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -269,7 +272,10 @@ def main():
     device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    env = mario_env_maker(env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement)
+    if args.wrapper_type == "dqn":
+        env = dqn_mario_env_maker(env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement)
+    else:
+        env = mario_env_maker(env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement)
 
     actor, qf_1, qf_2 = load_models(env, args, device)
 
