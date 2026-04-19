@@ -31,7 +31,8 @@ class SuperMarioBrosEnv(NESEnv):
     # the legal range of rewards for each step
     reward_range = (-15, 15)
 
-    def __init__(self, rom_mode='vanilla', lost_levels=False, target=None):
+    def __init__(self, rom_mode='vanilla', lost_levels=False, target=None,
+                 stuck_timeout=0):
         """
         Initialize a new Super Mario Bros environment.
 
@@ -41,6 +42,8 @@ class SuperMarioBrosEnv(NESEnv):
                 - False: load original Super Mario Bros.
                 - True: load Super Mario Bros. Lost Levels
             target (tuple): a tuple of the (world, stage) to play as a level
+            stuck_timeout (int): number of consecutive steps with no position
+                change before the episode is terminated. 0 to disable.
 
         Returns:
             None
@@ -57,6 +60,10 @@ class SuperMarioBrosEnv(NESEnv):
         self._time_last = 0
         # setup a variable to keep track of the last frames x position
         self._x_position_last = 0
+        # stuck detection
+        self._stuck_timeout = stuck_timeout
+        self._stuck_counter = 0
+        self._stuck_x = 0
         # reset the emulator
         self.reset()
         # skip the start screen
@@ -419,11 +426,15 @@ class SuperMarioBrosEnv(NESEnv):
         """Handle and RAM hacking before a reset occurs."""
         self._time_last = 0
         self._x_position_last = 0
+        self._stuck_counter = 0
+        self._stuck_x = 0
 
     def _did_reset(self):
         """Handle any RAM hacking after a reset occurs."""
         self._time_last = self._time
         self._x_position_last = self._x_position
+        self._stuck_counter = 0
+        self._stuck_x = self._x_position
 
     def _did_step(self, done):
         """
@@ -455,11 +466,24 @@ class SuperMarioBrosEnv(NESEnv):
         """Return the reward after a step occurs."""
         return self._x_reward + self._time_penalty + self._death_penalty
 
+    @property
+    def _is_stuck(self):
+        """Return True if Mario has been stuck for too long."""
+        if self._stuck_timeout <= 0:
+            return False
+        cur_x = self._x_position
+        if cur_x == self._stuck_x:
+            self._stuck_counter += 1
+        else:
+            self._stuck_counter = 0
+            self._stuck_x = cur_x
+        return self._stuck_counter >= self._stuck_timeout
+
     def _get_done(self):
         """Return True if the episode is over, False otherwise."""
         if self.is_single_stage_env:
-            return self._is_dying or self._is_dead or self._flag_get
-        return self._is_game_over
+            return self._is_dying or self._is_dead or self._flag_get or self._is_stuck
+        return self._is_game_over or self._is_stuck
 
     def _get_info(self):
         """Return the info after a step occurs"""

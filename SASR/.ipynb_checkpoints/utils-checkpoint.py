@@ -172,6 +172,7 @@ class MarioSparseRewardWrapper(gym.Wrapper):
 
         if done or truncated:
             x_pos = info.get("x_pos", self.START_X)
+            print(x_pos)
             reward = np.clip((x_pos - self.START_X) / (self.END_X - self.START_X), 0.0, 1.0)
         else:
             reward = 0.0
@@ -296,11 +297,9 @@ def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="
         old_env = gym_super_mario_bros.make(env_id, apply_api_compatibility=True, disable_env_checker=True)
 
     # Set stuck_timeout on the underlying SuperMarioBrosEnv
-    smb = old_env
-    while hasattr(smb, 'env'):
-        smb = smb.env
-    if hasattr(smb, '_stuck_timeout'):
-        smb._stuck_timeout = stuck_timeout
+    unwrapped = old_env.unwrapped
+    if hasattr(unwrapped, '_stuck_timeout'):
+        unwrapped._stuck_timeout = stuck_timeout
 
     old_env = JoypadSpace(old_env, actions)
 

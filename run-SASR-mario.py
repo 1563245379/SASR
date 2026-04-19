@@ -58,14 +58,17 @@ def parse_args():
                         help="Enable curriculum learning (start near goal, progress to start)")
     parser.add_argument("--min-stage-episodes", type=int, default=200,
                         help="Minimum episodes per curriculum stage before evaluation starts")
-    parser.add_argument("--eval-interval", type=int, default=100,
+    parser.add_argument("--eval-interval", type=int, default=50,
                         help="Evaluate every N episodes after min-stage-episodes reached")
     parser.add_argument("--eval-episodes", type=int, default=1,
                         help="Number of evaluation episodes per check")
-    parser.add_argument("--max-stage-episodes", type=int, default=3000,
+    parser.add_argument("--max-stage-episodes", type=int, default=1500,
                         help="Maximum episodes per stage (force advance to next stage)")
     parser.add_argument("--pass-rate-threshold", type=float, default=0.5,
                         help="Success rate threshold to advance to next stage")
+
+    parser.add_argument("--stuck-timeout", type=int, default=100,
+                        help="End episode if agent position unchanged for N steps (0 to disable)")
 
     args = parser.parse_args()
     return args
@@ -87,6 +90,7 @@ def run():
     env = mario_env_maker(
         env_id=args.env_id, seed=args.seed, render=args.render, movement=args.movement,
         curriculum_positions=CURRICULUM_POSITIONS if args.curriculum else None,
+        stuck_timeout=args.stuck_timeout,
     )
 
     print(f"Environment: {args.env_id}")
