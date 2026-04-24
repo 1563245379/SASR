@@ -148,27 +148,31 @@ class MarioSparseRewardWrapper(gym.Wrapper):
        reward = delta_score / 1000 + flag_get_bonus (+1)
     """
 
+    START_X = 40
+    END_X = 3160
+
     def __init__(self, env):
         super().__init__(env)
-        self._prev_score = 0
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-        self._prev_score = 0
         return obs, info
 
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
-        # Compute sparse reward
-        current_score = info.get("score", 0)
-        delta_score = current_score - self._prev_score
-        self._prev_score = current_score
-
-        sparse_reward = delta_score / 1000.0
-        if info.get("flag_get", False):
-            sparse_reward += 1.0
-
-        return obs, sparse_reward, done, truncated, info
+        
+        if True:
+            if done or truncated:
+                x_pos = info.get("x_pos", self.START_X)
+                normalized_dist = np.clip((x_pos - self.START_X) / (self.END_X - self.START_X), 0.0, 1.0)
+                info['normalized_distance'] = normalized_dist
+                reward = normalized_dist
+            else:
+                reward = 0.0
+        else:
+            reward = float(reward) / 15.0
+            
+        return obs, reward, done, truncated, info
 
 
 def mario_env_maker(env_id="SuperMarioBros-v0", seed=1, render=False, movement="simple"):
