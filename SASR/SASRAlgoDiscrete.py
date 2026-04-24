@@ -39,7 +39,7 @@ class SASRDiscrete:
                  alpha_lr=3e-4, target_network_frequency=1, tau=0.005, policy_frequency=2, alpha=0.2,
                  alpha_autotune=True, reward_weight=0.6, kde_bandwidth=0.2, kde_sample_burn_in=1000, rff_dim=1000,
                  retention_rate=0.1, write_frequency=100, save_folder="./sasr-mario/",
-                 feature_dim=512, feature_refresh_interval=5000):
+                 feature_dim=512, feature_refresh_interval=5000, sparse_reward = True):
         """
         Initialize the SASR algorithm for discrete action spaces.
         :param env: the gymnasium-compatible environment with image observations and discrete actions
@@ -47,7 +47,7 @@ class SASRDiscrete:
         :param critic_class: the critic class (QNetworkDiscrete)
         :param feature_dim: dimension of CNN feature vectors used for KDE (default: 512)
         """
-
+        self.sparse_reward = sparse_reward
         self.exp_name = exp_name
 
         # set the random seeds
@@ -61,6 +61,14 @@ class SASRDiscrete:
 
         self.env = env
         self.num_actions = env.action_space.n
+
+        # Push sparse_reward down into MarioSparseRewardWrapper if present.
+        # (Outer wrappers don't forward extra positional args, so we set it as
+        # an attribute on the wrapper instead of passing it per-step.)
+        from SASR.utils import get_sparse_reward_wrapper
+        _srw = get_sparse_reward_wrapper(self.env)
+        if _srw is not None:
+            _srw.sparse_reward = self.sparse_reward
 
         # * for the SAC-Discrete backbone
         self.actor = actor_class(self.env).to(self.device)
@@ -225,7 +233,9 @@ class SASRDiscrete:
 
         return kde_estimates
 
-    def learn(self, total_timesteps=1000000, learning_starts=10000, print_frequency=0):
+    def learn(self, total_episodes=2000, learning_starts=10000, print_frequency=0):
+        """Train for `total_episodes` episodes. `learning_starts` is still measured
+        in transitions (timesteps) since it controls replay-buffer burn-in."""
 
         obs, _ = self.env.reset()
 
@@ -234,8 +244,13 @@ class SASRDiscrete:
         flag_get = False
         episode_count = 0
         episode_returns = []
+        global_step = 0
 
-        for global_step in tqdm(range(total_timesteps), desc="SASR-Discrete Learning"):
+        # _current_epoch is the x-axis used by self.optimize(...) for TB logging.
+        self._current_epoch = 0
+
+        pbar = tqdm(total=total_episodes, desc="SASR-Discrete Learning (episodes)")
+        while episode_count < total_episodes:
             if global_step < learning_starts:
                 action = self.env.action_space.sample()
             else:
@@ -247,10 +262,12 @@ class SASRDiscrete:
             done = terminated or truncated
 
             if "episode" in info:
-                self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 episode_count += 1
+                self._current_epoch = episode_count
+                self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], episode_count)
+                self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], episode_count)
                 episode_returns.append(info["episode"]["r"])
+                pbar.update(1)
                 if print_frequency > 0 and episode_count % print_frequency == 0:
                     avg_return = np.mean(episode_returns[-print_frequency:])
                     print(f"Episode {episode_count} | Step {global_step} | "
@@ -281,6 +298,9 @@ class SASRDiscrete:
             if global_step > learning_starts:
                 self.optimize(global_step)
 
+            global_step += 1
+
+        pbar.close()
         self.env.close()
         self.writer.close()
 
@@ -390,18 +410,22 @@ class SASRDiscrete:
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
         # --- Logging ---
+        # Sampling gate remains transition-based (fires every write_frequency
+        # optimize() calls) so loss curves stay densely sampled, but the TB
+        # x-axis is the current epoch so all scalars share an episode-count axis.
         if global_step % self.write_frequency == 0:
-            self.writer.add_scalar("losses/qf_1_values", qf_1_a_values.mean().item(), global_step)
-            self.writer.add_scalar("losses/qf_2_values", qf_2_a_values.mean().item(), global_step)
-            self.writer.add_scalar("losses/qf_1_loss", qf_1_loss.item(), global_step)
-            self.writer.add_scalar("losses/qf_2_loss", qf_2_loss.item(), global_step)
-            self.writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-            self.writer.add_scalar("losses/actor_loss", actor_loss.item(), global_step)
-            self.writer.add_scalar("losses/alpha", self.alpha, global_step)
-            self.writer.add_scalar("sasr/s_buffer_size", len(self.S_buffer), global_step)
-            self.writer.add_scalar("sasr/f_buffer_size", len(self.F_buffer), global_step)
+            epoch = getattr(self, "_current_epoch", 0)
+            self.writer.add_scalar("losses/qf_1_values", qf_1_a_values.mean().item(), epoch)
+            self.writer.add_scalar("losses/qf_2_values", qf_2_a_values.mean().item(), epoch)
+            self.writer.add_scalar("losses/qf_1_loss", qf_1_loss.item(), epoch)
+            self.writer.add_scalar("losses/qf_2_loss", qf_2_loss.item(), epoch)
+            self.writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, epoch)
+            self.writer.add_scalar("losses/actor_loss", actor_loss.item(), epoch)
+            self.writer.add_scalar("losses/alpha", self.alpha, epoch)
+            self.writer.add_scalar("sasr/s_buffer_size", len(self.S_buffer), epoch)
+            self.writer.add_scalar("sasr/f_buffer_size", len(self.F_buffer), epoch)
             if self.alpha_autotune:
-                self.writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
+                self.writer.add_scalar("losses/alpha_loss", alpha_loss.item(), epoch)
 
     def save(self, indicator="best"):
         torch.save(self.actor.state_dict(),
@@ -453,6 +477,8 @@ class SASRDiscrete:
 
         num_stages = self.env.num_stages
         global_step = 0
+        total_episode_count = 0
+        self._current_epoch = 0
 
         for stage_idx in range(num_stages):
             # Set environment to current curriculum stage
@@ -482,10 +508,12 @@ class SASRDiscrete:
                 done = terminated or truncated
 
                 if "episode" in info:
-                    self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                    self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                    self.writer.add_scalar("curriculum/stage", stage_idx, global_step)
                     stage_episode_count += 1
+                    total_episode_count += 1
+                    self._current_epoch = total_episode_count
+                    self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], total_episode_count)
+                    self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], total_episode_count)
+                    self.writer.add_scalar("curriculum/stage", stage_idx, total_episode_count)
                     episode_returns.append(info["episode"]["r"])
                     if print_frequency > 0 and stage_episode_count % print_frequency == 0:
                         avg_return = np.mean(episode_returns[-print_frequency:])
@@ -526,7 +554,7 @@ class SASRDiscrete:
                         obs, _ = self.env.reset()
                         trajectory = []
                         flag_get = False
-                        self.writer.add_scalar("curriculum/pass_rate", pass_rate, global_step)
+                        self.writer.add_scalar("curriculum/pass_rate", pass_rate, total_episode_count)
                         print("  [Eval] Stage {} | Episode {} | Pass rate: {:.1f}%".format(
                             stage_idx, stage_episode_count, pass_rate * 100))
                         if pass_rate >= pass_rate_threshold:
@@ -550,3 +578,151 @@ class SASRDiscrete:
         print("\nCurriculum training complete. Total steps: {}".format(global_step))
         self.env.close()
         self.writer.close()
+
+    def subgoal_curriculum_learn(self, subgoal_thresholds, learning_starts=10000,
+                                  print_frequency=0, min_stage_episodes=200,
+                                  eval_window=50, max_stage_episodes=2000,
+                                  success_rate_threshold=0.5):
+        """Sub-goal curriculum learning: progressively increase the distance threshold for success.
+
+        Mario always starts from position x=40. The agent must reach progressively
+        farther distance thresholds (e.g. 20%, 40%, 60%, 80%, 100%) to advance stages.
+        Success is evaluated by checking normalized_distance against the current threshold.
+
+        Network parameters and replay buffer persist across stages.
+        S/F buffers are cleared on stage transitions since the definition of
+        "success" changes per stage.
+
+        Args:
+            subgoal_thresholds: list of float thresholds [0,1], e.g. [0.2, 0.4, 0.6, 0.8, 1.0]
+            learning_starts: random exploration steps before policy is used
+            print_frequency: print average return every N episodes (0 to disable)
+            min_stage_episodes: minimum episodes per stage before stage advancement is evaluated
+            eval_window: sliding window size for computing success rate
+            max_stage_episodes: force advance to next stage after this many episodes
+            success_rate_threshold: success rate threshold to advance to next stage
+        """
+        from SASR.utils import get_sparse_reward_wrapper
+
+        # Find the MarioSparseRewardWrapper in the wrapper chain
+        reward_wrapper = get_sparse_reward_wrapper(self.env)
+        if reward_wrapper is None:
+            raise ValueError("Could not find MarioSparseRewardWrapper in the environment wrapper chain. "
+                             "Sub-goal curriculum requires MarioSparseRewardWrapper.")
+
+        num_stages = len(subgoal_thresholds)
+        global_step = 0
+
+        for stage_idx in range(num_stages):
+            threshold = subgoal_thresholds[stage_idx]
+
+            # Clear S/F buffers: "success" semantics change per stage
+            self._clear_sf_buffers()
+
+            print("\n" + "=" * 60)
+            print("  SUB-GOAL STAGE {}/{}: threshold={:.0f}% distance".format(
+                stage_idx + 1, num_stages, threshold * 100))
+            print("=" * 60)
+
+            obs, _ = self.env.reset()
+            trajectory = []
+            stage_episode_count = 0
+            episode_returns = []
+            stage_successes = []  # sliding window of True/False for recent episodes
+            passed = False
+
+            while stage_episode_count < max_stage_episodes:
+
+                # Select action
+                if global_step < learning_starts:
+                    action = self.env.action_space.sample()
+                else:
+                    obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+                    action, _, _ = self.actor.get_action(obs_tensor)
+                    action = action.item()
+
+                next_obs, reward, terminated, truncated, info = self.env.step(action)
+                done = terminated or truncated
+
+                if "episode" in info:
+                    self.writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                    self.writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    self.writer.add_scalar("curriculum/stage", stage_idx, global_step)
+                    self.writer.add_scalar("curriculum/subgoal_threshold", threshold, global_step)
+                    stage_episode_count += 1
+                    episode_returns.append(info["episode"]["r"])
+
+                    # Determine success for this episode based on normalized_distance
+                    normalized_dist = info.get("normalized_distance", 0.0)
+                    ep_success = normalized_dist >= threshold
+                    stage_successes.append(ep_success)
+
+                    if print_frequency > 0 and stage_episode_count % print_frequency == 0:
+                        avg_return = np.mean(episode_returns[-print_frequency:])
+                        recent_rate = (np.mean(stage_successes[-eval_window:]) * 100
+                                       if stage_successes else 0.0)
+                        print("Stage {}/{} | Episode {} | Step {} | "
+                              "Avg Return (last {}): {:.3f} | "
+                              "Last dist: {:.1f}% | "
+                              "Success rate (last {}): {:.1f}%".format(
+                                  stage_idx + 1, num_stages,
+                                  stage_episode_count, global_step,
+                                  print_frequency, avg_return,
+                                  normalized_dist * 100,
+                                  eval_window, recent_rate))
+
+                self.replay_buffer.add(obs, next_obs, np.array([action]), reward, done, info)
+                trajectory.append(obs)
+
+                if not done:
+                    obs = next_obs
+                else:
+                    obs, _ = self.env.reset()
+
+                    # Classify trajectory: success if normalized_distance >= threshold
+                    normalized_dist = info.get("normalized_distance", 0.0)
+                    if normalized_dist >= threshold:
+                        self.update_S(trajectory)
+                    else:
+                        self.update_F(trajectory)
+
+                    trajectory = []
+
+                    # Stage advancement check (sliding window)
+                    if (global_step >= learning_starts and
+                            stage_episode_count >= min_stage_episodes and
+                            len(stage_successes) >= eval_window):
+                        recent_success_rate = np.mean(stage_successes[-eval_window:])
+                        self.writer.add_scalar("curriculum/stage_success_rate",
+                                               recent_success_rate, global_step)
+
+                        if recent_success_rate >= success_rate_threshold:
+                            print("\n  >>> Stage {}/{} PASSED! "
+                                  "(success rate={:.1f}% over last {} episodes)".format(
+                                      stage_idx + 1, num_stages,
+                                      recent_success_rate * 100, eval_window))
+                            passed = True
+                            break
+
+                if global_step > learning_starts:
+                    self.optimize(global_step)
+
+                global_step += 1
+
+            if not passed:
+                print("  >>> Stage {}/{} reached max episodes ({}), advancing.".format(
+                    stage_idx + 1, num_stages, max_stage_episodes))
+
+            # Save checkpoint after each stage
+            self.save(indicator="subgoal_stage{}".format(stage_idx))
+
+        print("\nSub-goal curriculum training complete. Total steps: {}".format(global_step))
+        self.env.close()
+        self.writer.close()
+
+    def _clear_sf_buffers(self):
+        """Clear the success/failure buffers and their feature tensors."""
+        self.S_buffer = []
+        self.S_buffer_tensor = torch.zeros(0, self.feature_dim).to(self.device)
+        self.F_buffer = []
+        self.F_buffer_tensor = torch.zeros(0, self.feature_dim).to(self.device)

@@ -38,8 +38,10 @@ def parse_args():
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--policy-frequency", type=int, default=2)
 
-    parser.add_argument("--total-timesteps", type=int, default=1000000)
-    parser.add_argument("--learning-starts", type=int, default=5000)
+    parser.add_argument("--total-episodes", type=int, default=1500,
+                        help="Total training episodes (one epoch = one Mario episode).")
+    parser.add_argument("--learning-starts", type=int, default=5000,
+                        help="Replay buffer burn-in, measured in transitions (timesteps).")
 
     parser.add_argument("--reward-weight", type=float, default=0.6)
     parser.add_argument("--kde-bandwidth", type=float, default=0.2)
@@ -56,19 +58,37 @@ def parse_args():
     # Curriculum learning
     parser.add_argument("--curriculum", action="store_true", default=False,
                         help="Enable curriculum learning (start near goal, progress to start)")
-    parser.add_argument("--min-stage-episodes", type=int, default=200,
+    parser.add_argument("--min-stage-episodes", type=int, default=100,
                         help="Minimum episodes per curriculum stage before evaluation starts")
     parser.add_argument("--eval-interval", type=int, default=50,
                         help="Evaluate every N episodes after min-stage-episodes reached")
     parser.add_argument("--eval-episodes", type=int, default=1,
                         help="Number of evaluation episodes per check")
-    parser.add_argument("--max-stage-episodes", type=int, default=1500,
+    parser.add_argument("--max-stage-episodes", type=int, default=300,
                         help="Maximum episodes per stage (force advance to next stage)")
     parser.add_argument("--pass-rate-threshold", type=float, default=0.5,
                         help="Success rate threshold to advance to next stage")
+    
+    # subgoal
+    parser.add_argument("--subgoal-curriculum", action="store_true", default=False,
+                        help="Enable sub-goal curriculum learning (progressively increase distance threshold)")
+    parser.add_argument("--subgoal-stages", type=int, default=5,
+                        help="Number of sub-goal stages (divides [0,1] into equal intervals, e.g. 5 => 20%%,40%%,60%%,80%%,100%%)")
+    parser.add_argument("--subgoal-binary-reward", action="store_true", default=False,
+                        help="Use binary reward (1 if reached subgoal, 0 otherwise) instead of continuous distance")
+    parser.add_argument("--subgoal-min-stage-episodes", type=int, default=100,
+                        help="Minimum episodes per sub-goal stage before advancement check")
+    parser.add_argument("--subgoal-eval-window", type=int, default=50,
+                        help="Sliding window size for computing sub-goal success rate")
+    parser.add_argument("--subgoal-max-stage-episodes", type=int, default=300,
+                        help="Maximum episodes per sub-goal stage (force advance)")
+    parser.add_argument("--subgoal-success-rate", type=float, default=0.7,
+                        help="Success rate threshold to advance to next sub-goal stage")
 
     parser.add_argument("--stuck-timeout", type=int, default=100,
                         help="End episode if agent position unchanged for N steps (0 to disable)")
+    parser.add_argument("--sparse-reward", type=bool, default=True, 
+                        help="Use only distance reward, no other reward shaping.")
 
     args = parser.parse_args()
     return args
@@ -123,6 +143,7 @@ def run():
         retention_rate=args.retention_rate,
         write_frequency=args.write_frequency,
         save_folder=args.save_folder,
+        sparse_reward=args.sparse_reward,
     )
 
     if args.curriculum:
@@ -135,8 +156,24 @@ def run():
             max_stage_episodes=args.max_stage_episodes,
             pass_rate_threshold=args.pass_rate_threshold,
         )
+    
+    if args.subgoal_curriculum:
+        # Build sub-goal thresholds: e.g. 5 stages => [0.2, 0.4, 0.6, 0.8, 1.0]
+        thresholds = [round((i + 1) / args.subgoal_stages, 2) for i in range(args.subgoal_stages)]
+        print(f"Sub-goal curriculum: {len(thresholds)} stages, thresholds={thresholds}")
+        print(f"Reward mode: {'binary' if args.subgoal_binary_reward else 'continuous'}")
+        agent.subgoal_curriculum_learn(
+            subgoal_thresholds=thresholds,
+            learning_starts=args.learning_starts,
+            print_frequency=args.print_frequency,
+            min_stage_episodes=args.subgoal_min_stage_episodes,
+            eval_window=args.subgoal_eval_window,
+            max_stage_episodes=args.subgoal_max_stage_episodes,
+            success_rate_threshold=args.subgoal_success_rate,
+        )
+    
     else:
-        agent.learn(total_timesteps=args.total_timesteps, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
+        agent.learn(total_episodes=args.total_episodes, learning_starts=args.learning_starts, print_frequency=args.print_frequency)
 
     agent.save(indicator="final")
 

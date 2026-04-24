@@ -160,8 +160,13 @@ class MarioSparseRewardWrapper(gym.Wrapper):
     START_X = 40
     END_X = 3160
 
-    def __init__(self, env):
+    def __init__(self, env, sparse_reward=True):
         super().__init__(env)
+        # Stateful mode flag. Outer wrappers (RecordEpisodeStatistics, CurriculumMarioWrapper,
+        # ...) do not forward extra positional args through step(), so plumbing this as a
+        # per-step argument does not work end-to-end. Agents should flip this attribute
+        # instead, e.g. via SASR.utils.get_sparse_reward_wrapper(env).sparse_reward = ...
+        self.sparse_reward = sparse_reward
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -170,14 +175,18 @@ class MarioSparseRewardWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
 
-        if done or truncated:
-            x_pos = info.get("x_pos", self.START_X)
-            reward = np.clip((x_pos - self.START_X) / (self.END_X - self.START_X), 0.0, 1.0)
+        if self.sparse_reward:
+            if done or truncated:
+                x_pos = info.get("x_pos", self.START_X)
+                normalized_dist = np.clip((x_pos - self.START_X) / (self.END_X - self.START_X), 0.0, 1.0)
+                info['normalized_distance'] = normalized_dist
+                reward = normalized_dist
+            else:
+                reward = 0.0
         else:
-            reward = 0.0
+            reward = float(reward) / 15.0
 
         return obs, reward, done, truncated, info
-
 
 class NoopResetWrapper(gym.Wrapper):
     """Execute random number of no-ops on reset (gymnasium-compatible)."""
@@ -406,3 +415,12 @@ def continuous_control_env_maker(env_id, seed=1, render=False, **kwargs):
     env = gym.wrappers.RecordEpisodeStatistics(env)
 
     return env
+
+def get_sparse_reward_wrapper(env):
+    """Recursively unwrap to find MarioSparseRewardWrapper in the wrapper chain."""
+    current = env
+    while current is not None:
+        if isinstance(current, MarioSparseRewardWrapper):
+            return current
+        current = getattr(current, 'env', None)
+    return None

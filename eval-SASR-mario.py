@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--indicator", type=str, default="final",
                         help="Model checkpoint indicator (e.g., 'final', 'best').")
 
-    parser.add_argument("--num-episodes", type=int, default=50,
+    parser.add_argument("--num-episodes", type=int, default=1,
                         help="Number of evaluation episodes.")
     parser.add_argument("--render", action="store_true",
                         help="Render the environment during evaluation.")
