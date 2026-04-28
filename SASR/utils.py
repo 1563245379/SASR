@@ -161,7 +161,7 @@ class MarioSparseRewardWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
         
-        if True:
+        if False:
             if done or truncated:
                 x_pos = info.get("x_pos", self.START_X)
                 normalized_dist = np.clip((x_pos - self.START_X) / (self.END_X - self.START_X), 0.0, 1.0)

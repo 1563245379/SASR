@@ -15,7 +15,7 @@ def parse_args():
 
     parser.add_argument("--exp-name", type=str, default="ppo-mario")
 
-    parser.add_argument("--env-id", type=str, default="SuperMarioBros-v3")
+    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
     parser.add_argument(
         "--movement",
         type=str,
@@ -46,9 +46,9 @@ def parse_args():
     parser.add_argument("--update-epochs", type=int, default=10)
     parser.add_argument("--no-anneal-lr", action="store_true", help="Keep learning rate constant.")
 
-    parser.add_argument("--total-timesteps", type=int, default=1_000_000)
+    parser.add_argument("--total-timesteps", type=int, default=3_000_000)
 
-    parser.add_argument("--write-frequency", type=int, default=100)
+    parser.add_argument("--write-frequency", type=int, default=50)
     parser.add_argument("--save-folder", type=str, default="./ppo-mario/")
 
     return parser.parse_args()

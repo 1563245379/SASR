@@ -18,7 +18,7 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained PPO-Mario agent.")
 
-    parser.add_argument("--env-id", type=str, default="SuperMarioBros-v3")
+    parser.add_argument("--env-id", type=str, default="SuperMarioBros-1-1-v1")
     parser.add_argument(
         "--movement",
         type=str,
@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--exp-name", type=str, default="ppo-mario")
     parser.add_argument("--indicator", type=str, default="final")
 
-    parser.add_argument("--num-episodes", type=int, default=50)
+    parser.add_argument("--num-episodes", type=int, default=1)
     parser.add_argument("--render", action="store_true")
 
     parser.add_argument(
@@ -47,6 +47,8 @@ def parse_args():
         help="Sample actions from the policy instead of greedy argmax.",
     )
 
+    parser.add_argument("--reward", type=str, default="dense", choices=["dense", "sparse"])
+
     return parser.parse_args()
 
 
@@ -54,7 +56,7 @@ def load_model(env, args, device):
     ac = PPOActorCriticDiscrete(env).to(device)
     path = os.path.join(
         args.model_dir,
-        "ppo-ac-{}-{}-{}.pth".format(args.exp_name, args.indicator, args.seed),
+        "ppo-ac-{}-{}-{}-{}.pth".format(args.exp_name, args.indicator, args.seed, args.reward),
     )
     if not os.path.exists(path):
         raise FileNotFoundError("Checkpoint not found: {}".format(path))

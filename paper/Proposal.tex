@@ -1,0 +1,33 @@
+\documentclass[11pt, letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{cite}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.8em}
+
+\titlespacing*{\section}{0pt}{1.2ex plus 1ex minus .2ex}{0.5ex plus .2ex}
+
+\begin{document}
+
+\begin{center}
+    \Large \textbf{COMP-579: Reinforcement Learning - Project Proposal} \\[1em]
+    \large \textbf{Proposed Title:} Reproducing and Extending Self-Adaptive Success Rate-based Reward Shaping (SASR) in Vision-Based Sparse Environments \\[0.8em]
+    \normalsize \textbf{Team Members:}Yuchen Zhou, Junpeng Wen
+\end{center}
+
+\vspace{1em}
+
+\section*{Background and Motivation}
+Sparse rewards remain a fundamental challenge in reinforcement learning, often leading to zero gradients and exploration failures over long horizons. The recently proposed SASR algorithm \cite{ma2025highly} elegantly addresses this by using Kernel Density Estimation and Beta distributions to autonomously shape rewards based on historical state success rates. While SASR shows great sample efficiency in simple continuous control tasks, its performance in complex, vision-based environments is largely unexplored. We plan to reproduce SASR’s core mechanism and extend its evaluation to a highly challenging, strictly sparse-reward variant of the \textit{Super Mario Bros} environment. The aim is to test whether self-adaptive reward shaping can effectively guide the agent to discover complex action sequences without relying on any intermediate dense rewards.
+
+\section*{Methods}
+We will first reimplement the SASR algorithm integrated with Soft Actor-Critic (SAC) \cite{haarnoja2018soft} and reproduce the paper's original results on the classic MountainCar environment to validate the correctness of our code. Next, we will conduct experiments using the \texttt{gym-super-mario-bros} \cite{gym-super-mario-bros} simulator under sparse reward conditions (rewards are given based on easily identifiable events in the game, such as scoring or taking damage). To handle visual inputs, we will use a CNN encoder to map raw pixels into a lower-dimensional state space before applying SASR’s density estimation. We will compare SASR’s performance and sample efficiency against standard SAC and a Random baseline.
+
+\bibliographystyle{unsrt}
+\bibliography{ref}
+
+\end{document}

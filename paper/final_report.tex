@@ -1,0 +1,121 @@
+\documentclass{article}
+
+% For COMP-579 final report (NeurIPS format, 4 pages max excluding references).
+\usepackage[preprint]{neurips_2026}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{natbib} 
+
+\title{Final Project Report: Self-Adaptive Success-Rate Reward Shaping (SASR)}
+
+\author{
+Yuchen Zhou \\
+Group 115 \\
+\texttt{yuchen.zhou2@mail.mcgill.ca}
+\And
+Junpeng Wen \\
+Group 115 \\
+\texttt{junpeng.wen@mail.mcgill.ca}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Sparse and delayed rewards remain a core obstacle for deep reinforcement learning, where naive exploration can lead to prohibitively slow learning. In this project we study Self-Adaptive Success Rate (SASR) reward shaping~\citep{ma2025sasr}, a method that augments environment rewards with a learned, state-dependent shaping signal derived from an evolving estimate of success probability. We use the provided reference implementation to reproduce behaviors on sparse-reward continuous-control benchmarks and extend the pipeline to discrete, image-based control in Super Mario Bros. This report summarizes the problem setting, the SASR mechanism and its relationship to classical reward shaping and exploration, and empirical findings and ablations.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Deep reinforcement learning (RL) has achieved strong performance in domains with dense feedback and well-shaped rewards, but many real tasks provide rewards only upon completion or rare events. In such \emph{sparse-reward} settings, off-policy algorithms can spend most of training collecting uninformative trajectories, making learning brittle and sample-inefficient. This challenge is particularly acute when combining function approximation with long horizons, where exploration errors compound and the agent may never observe a success signal.
+
+Two common directions to address sparsity are (i) designing auxiliary exploration bonuses (e.g., curiosity or novelty) and (ii) modifying the learning problem to provide more learning signal without changing the optimal behavior. Examples include intrinsic motivation via prediction error~\citep{burda2018rnd} and goal-conditioned replay that re-labels outcomes as goals~\citep{andrychowicz2017her}. A complementary classical idea is \emph{reward shaping}: adding an extra term to the reward to accelerate learning while preserving the optimal policy, for instance via potential-based shaping functions~\citep{ng1999policy}.
+
+In this project we focus on \textbf{Self-Adaptive Success Rate} (SASR)~\citep{ma2025sasr}, a reward shaping method that estimates a state-dependent probability of eventual success and uses it as an additive shaping signal. SASR builds an estimate of success likelihood from past successful and failed experience and uses Thompson-sampling-inspired uncertainty to adaptively reward states that appear promising but underexplored. Specifically, we re-implemented SASR with a Soft Actor-Critic (SAC) backbone for continuous control~\citep{haarnoja2018sac} and extended it for discrete, image-based control settings where density estimation is performed in learned CNN feature space.
+
+Our goals are threefold: (1) reproduce key behaviors of SASR on sparse-reward continuous-control benchmarks included in the reference implementation, (2) understand the algorithmic design choices that make SASR stable and efficient, and (3) evaluate an extension to discrete, pixel-based control with optional curriculum learning, alongside DQN and PPO-style baselines~\citep{mnih2015dqn}. The rest of the report provides background, then details methodology, experimental setup, results, and conclusions.
+
+\section{Background}
+\label{sec:background}
+
+\paragraph{Sparse rewards and exploration in RL.}
+We consider episodic Markov decision processes where an agent learns a policy \(\pi(a \mid s)\) to maximize expected discounted return. In sparse-reward tasks, the environment reward is zero for most transitions and non-zero only at rare terminal events (e.g., reaching a goal). This creates two intertwined issues: (i) value targets have high variance because informative rewards are infrequent, and (ii) data collection is dominated by failures, so function approximation may generalize incorrectly and discourage further exploration.
+
+\paragraph{Reward shaping.}
+Reward shaping augments the environment reward \(r_t\) with an additional term \(f(s_t, a_t, s_{t+1})\) intended to speed learning. A key desideratum is \emph{policy invariance}: the optimal policy under the shaped reward should match that of the original MDP. Potential-based shaping achieves this by defining \(f(s_t, a_t, s_{t+1}) = \gamma \Phi(s_{t+1}) - \Phi(s_t)\) for some potential function \(\Phi\)~\citep{ng1999policy}. In practice, however, designing a good potential can be as hard as designing the reward itself, motivating data-driven shaping signals.
+
+\paragraph{Success probability as shaping signal.}
+Intuitively, a shaping reward that correlates with ``probability of eventually succeeding from state \(s\)'' provides dense feedback aligned with task completion. If an agent can estimate \(p(\text{success} \mid s)\), then increasing this quantity along a trajectory becomes a proxy for progress even when the environment reward is mostly zero. Estimating success probabilities from experience is challenging because the state distribution changes during learning and successes may be rare.
+
+\paragraph{SASR: self-adaptive success-rate reward shaping.}
+SASR~\citep{ma2025sasr} operationalizes the above idea by maintaining separate buffers of state features encountered in successful and failed episodes. It employs Kernel Density Estimation with Random Fourier Features (KDE-RFF) to model the empirical distributions of these features. For a given state $s$, SASR uses these models to estimate counts $n_{\text{success}}(s)$ and $n_{\text{failure}}(s)$---effectively, how often states similar to $s$ contribute to overall success or failure. These counts parameterize a Beta distribution, $\mathrm{Beta}(n_{\text{success}}(s) + 1, n_{\text{failure}}(s) + 1)$, which models the uncertainty about the true success probability from state $s$. The shaped reward is then sampled from this distribution, providing a probabilistic, self-adaptive bonus. This Thompson-sampling-inspired mechanism balances exploration and exploitation: in undersampled regions, the high variance of the Beta distribution encourages exploration of promising states; as more data is gathered, the estimate concentrates, stabilizing the learning signal.
+
+In the reference implementation, the continuous-control variant combines SASR shaping with the maximum-entropy SAC objective~\citep{haarnoja2018sac}. For discrete, image-based control, raw pixels are mapped into a lower-dimensional representation by a convolutional encoder (similar in spirit to the DQN feature extractor~\citep{mnih2015dqn}), and SASR performs density estimation in this learned feature space to avoid the curse of dimensionality. Because the representation drifts during training, the implementation periodically refreshes stored features to keep the success/failure density model consistent.
+
+\section{Methodology}
+\label{sec:methodology}
+
+Our methodology has three components: (i) reproducing the reference SASR implementation on continuous-control benchmarks, (ii) extending SASR to discrete, image-based control in Super Mario Bros, and (iii) comparing against PPO and DQN baselines on the same Mario environment.
+
+\subsection{SASR on Continuous Control (Reproduction)}
+
+We use the authors' reference implementation of SASR with Soft Actor--Critic (SAC)~\citep{haarnoja2018sac} as the backbone on \texttt{MountainCarContinuous-v0}. The SAC component follows the standard architecture: a stochastic actor outputs a tanh-squashed Gaussian policy via two-layer MLPs ($256$ hidden units, ReLU), and twin Q-networks with Polyak-averaged targets provide the critic signal. Entropy temperature $\alpha$ is auto-tuned against a target entropy of $-\dim(\mathcal{A})$.
+
+The SASR shaping mechanism operates as described in Section~\ref{sec:background}. At training time, every completed episode is classified as \emph{success} (any positive reward observed) or \emph{failure} and its trajectory states are sub-sampled at retention rate $\phi = 0.1$ into buffers $\mathcal{S}$ and $\mathcal{F}$. During each optimisation step a minibatch of states from the replay buffer is evaluated: KDE with Random Fourier Features (RFF, dimension $M = 1000$, bandwidth $h = 0.2$) estimates per-state densities $\hat{p}_\mathcal{S}(s)$ and $\hat{p}_\mathcal{F}(s)$. These are scaled into pseudo-counts $n_\mathcal{S}(s) = \hat{p}_\mathcal{S}(s) \cdot t \cdot \phi$ and $n_\mathcal{F}(s) = \hat{p}_\mathcal{F}(s) \cdot t \cdot \phi$ (where $t$ is the current timestep), and the shaped reward is sampled from $\mathrm{Beta}(n_\mathcal{S} + 1,\; n_\mathcal{F} + 1)$, added to the environment reward with weight $\lambda / 2$ ($\lambda = 0.6$). All hyperparameters match those in the reference code.
+
+\subsection{Extension to Discrete Image-Based Control}
+
+\paragraph{Environment: Super Mario Bros.}
+We use \texttt{gym-super-mario-bros}~\citep{gym-super-mario-bros} with the \texttt{SIMPLE\_MOVEMENT} action set (7 discrete actions). Raw $240 \times 256$ RGB frames pass through a standard Atari-style preprocessing pipeline: a gymnasium compatibility adapter, a reward wrapper (see below), 4-frame skip with max-pooling over the last two frames, grayscale resizing to $84 \times 84$, 4-frame stacking along the channel axis (final observation shape $4 \times 84 \times 84$), and $[0, 255] \to [0, 1]$ normalisation.
+
+\paragraph{Reward design.}
+To evaluate SASR in settings closer to its target regime, we experiment with two reward variants. In the \emph{scaled dense} setting, the native Mario reward (based on $x$-position progress, score, and time) is scaled by $1/15$. In an alternative \emph{sparse} setting (toggled in the wrapper), the agent receives zero reward per step and a single terminal reward equal to the normalised forward distance $\tilde{x} = \mathrm{clip}((x_\text{pos} - x_\text{start}) / (x_\text{end} - x_\text{start}),\; 0, 1)$.
+
+\paragraph{SASR-Discrete (SAC backbone).}
+The continuous SAC backbone is replaced with SAC-Discrete~\citep{haarnoja2018sac}: the actor outputs a categorical distribution over actions via softmax, and twin Q-networks map states to $|\mathcal{A}|$-dimensional Q-value vectors. Both actor and critic share an Atari-style CNN feature extractor (three convolutional layers with $32/64/64$ filters of sizes $8 \times 8 / 4 \times 4 / 3 \times 3$ and strides $4/2/1$, followed by a 512-unit fully connected layer with ReLU activations).
+
+Because raw image observations are high-dimensional, applying KDE directly on pixel space is infeasible. Instead, we perform density estimation in the 512-dimensional CNN feature space: when a trajectory is committed to $\mathcal{S}$ or $\mathcal{F}$, its observations are passed through the actor's CNN encoder (under \texttt{no\_grad}) and the resulting feature vectors are stored. During optimisation, mini-batch observations are similarly embedded before KDE evaluation. Success is determined by the \texttt{flag\_get} signal (level completion) rather than positive reward. All other SASR components---RFF-accelerated KDE, Beta sampling, pseudo-count scaling---remain identical to the continuous version. A key consideration is that the CNN representation drifts during training; the stored features reflect the encoder state at insertion time, introducing a distributional lag that we discuss in Section~\ref{sec:results}.
+
+\paragraph{DQN baseline.}
+As an off-policy baseline we implement a Dueling Double DQN~\citep{mnih2015dqn}. The architecture mirrors the CNN backbone above (two convolutional layers, $32/64$ filters, followed by a 512-unit FC layer) but splits into separate value and advantage streams. Training uses $\epsilon$-greedy exploration ($\epsilon = 0.001$), a replay buffer of 50{,}000 transitions, batch size 256, learning rate $10^{-4}$, and hard target-network updates every 50 training steps.
+
+\paragraph{PPO baseline.}
+We implement a single-environment, CleanRL-style PPO~\citep{schulman2017ppo} with a shared CNN actor--critic (the same \texttt{CNNFeatureExtractor} backbone, with separate linear heads for the categorical policy and scalar value). Standard PPO components include GAE-$\lambda$ ($\gamma = 0.99$, $\lambda = 0.95$), clipped surrogate objective ($\epsilon_\text{clip} = 0.2$), entropy bonus ($c_\text{ent} = 0.01$), value-function coefficient $c_\text{vf} = 0.5$, gradient clipping at $0.5$, and linear learning-rate annealing over the training horizon.
+
+\subsection{SASR + PPO Hybrid}
+
+To investigate whether SASR's shaping signal can benefit on-policy learning, we combine SASR with PPO. After each rollout of $T = 2048$ steps, CNN features are extracted from all collected observations under \texttt{no\_grad} and KDE pseudo-counts are computed as in SASR-Discrete. The shaped reward $r_t^\text{sasr} \sim \mathrm{Beta}(\alpha_t, \beta_t)$ is added to each step's environment reward \emph{before} GAE computation, so it propagates into both advantages and value targets. This design choice matches the TD-target semantics of the SAC-based SASR but applies it within PPO's on-policy update.
+
+Several modifications address practical challenges:
+\begin{itemize}
+    \item \textbf{Feature normalisation}: CNN features are $L^2$-normalised before KDE so that the bandwidth $h$ carries a stable cosine-distance interpretation as the encoder weights drift during training.
+    \item \textbf{FIFO buffer caps}: $\mathcal{S}$ and $\mathcal{F}$ are capped (default 50{,}000 entries) to bound memory and prevent stale features from dominating the density model. The pseudo-count multiplier uses $|\mathcal{S}|$ and $|\mathcal{F}|$ (actual buffer sizes) instead of $t \cdot \phi$ to preserve the intended concentration of the Beta distribution under capping.
+    \item \textbf{Adaptive success classification}: Because the agent may never reach the flag on harder Mario levels, we augment the binary flag-based criterion with a quantile-based rule: a trajectory is classified as success if its terminal reward exceeds the $75^\text{th}$ percentile of a rolling window of 100 recent terminal rewards. This prevents the success buffer from remaining empty and ensures the shaping signal activates.
+    \item \textbf{Warm-up gating}: Shaped rewards are suppressed until $\mathcal{S}$ exceeds the burn-in threshold ($1{,}000$ entries), preventing early-training noise from the uninformed $\mathrm{Beta}(1, 1)$ prior from destabilising PPO's policy.
+\end{itemize}
+
+\section{Experimental Results}
+\label{sec:results}
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+
+\section*{References}
+{
+\small
+\bibliographystyle{plainnat}
+\bibliography{references} 
+}
+
+\end{document}
